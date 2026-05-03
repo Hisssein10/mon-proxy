@@ -152,7 +152,7 @@
         <circle cx="7" cy="7" r="5" stroke="#999" stroke-width="1.5"/>
         <path d="M10.5 10.5L14 14" stroke="#999" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
-      <input type="text" id="url-input" placeholder="Entrer une URL…" autocomplete="off" spellcheck="false"/>
+      <input type="text" id="url-input" placeholder="Entrer une URL ou rechercher…" autocomplete="off" spellcheck="false"/>
       <button onclick="navigate()" title="Aller">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <path d="M3 8h10M9 4l4 4-4 4" stroke="#777" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -254,11 +254,14 @@ setTimeout(() => cliquerSur('a'), 3000);
 
   function go(url) {
     setStatus('loading', 'Chargement via proxy…');
-    const pUrl = url.startsWith(proxyBase) ? url : proxyUrl(url);
+    const cleanUrl = url.startsWith(proxyBase)
+      ? decodeURIComponent(url.replace(proxyBase + '/proxy?url=', ''))
+      : url;
+    const pUrl = proxyBase + '/proxy?url=' + encodeURIComponent(cleanUrl);
     frame.src  = pUrl;
-    inp.value  = url.replace(proxyBase + '/proxy?url=', '').replace(/^.*url=/, '');
+    inp.value  = cleanUrl;
     hist       = hist.slice(0, idx + 1);
-    hist.push(url);
+    hist.push(cleanUrl);
     idx        = hist.length - 1;
     updateNav();
   }
@@ -266,7 +269,21 @@ setTimeout(() => cliquerSur('a'), 3000);
   function navigate() {
     const v = inp.value.trim();
     if (!v) return;
-    const url = /^https?:\/\//i.test(v) ? v : 'https://' + v;
+
+    let url;
+    // Si c'est une URL (commence par http, https, ou www, ou contient un .com/.net etc.)
+    if (/^https?:\/\//i.test(v)) {
+      url = v;
+    } else if (/^www\./i.test(v)) {
+      url = 'https://' + v;
+    } else if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/.test(v) && !v.includes(' ')) {
+      url = 'https://' + v;
+    } else {
+      // Sinon c'est une recherche Google
+      url = 'https://www.google.com/search?q=' + encodeURIComponent(v);
+    }
+
+    // Toujours passer par le proxy
     go(url);
   }
 
@@ -367,10 +384,10 @@ setTimeout(() => cliquerSur('a'), 3000);
   // ── Navigation ────────────────────────────────────────────
 
   document.getElementById('btn-back').addEventListener('click', () => {
-    if (idx > 0) { idx--; frame.src = hist[idx]; inp.value = decodeURIComponent(hist[idx].replace(proxyBase + '/proxy?url=', '')); updateNav(); }
+    if (idx > 0) { idx--; frame.src = proxyBase + '/proxy?url=' + encodeURIComponent(hist[idx]); inp.value = hist[idx]; updateNav(); }
   });
   document.getElementById('btn-fwd').addEventListener('click', () => {
-    if (idx < hist.length-1) { idx++; frame.src = hist[idx]; inp.value = decodeURIComponent(hist[idx].replace(proxyBase + '/proxy?url=', '')); updateNav(); }
+    if (idx < hist.length-1) { idx++; frame.src = proxyBase + '/proxy?url=' + encodeURIComponent(hist[idx]); inp.value = hist[idx]; updateNav(); }
   });
   document.getElementById('btn-rld').addEventListener('click', () => { frame.src = frame.src; });
 
@@ -378,10 +395,9 @@ setTimeout(() => cliquerSur('a'), 3000);
 
   // ── Chargement automatique au démarrage ───────────────────
   window.addEventListener('load', () => {
-    go('https://xn--ledningsfri-stvsuger-occ.com/iframe//');
+    go('https://net24digital.com/professional-higgsfield-ai-review-is-it-the-ultimate-video-tool/');
   });
 </script>
 
 </body>
 </html>
-
