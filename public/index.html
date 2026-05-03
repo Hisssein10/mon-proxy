@@ -1,1 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Navigateur Proxy Transparent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f0f0;
+      padding: 1.5rem;
+      min-height: 100vh;
+    }
+    .browser {
+      max-width: 1100px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.13);
+      background: #fff;
+    }
+
+    /* ── Barre d'outils ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: #e8e8e8;
+      border-bottom: 1px solid #d0d0d0;
+    }
+    .dots { display: flex; gap: 6px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+
+    .nav-btns { display: flex; gap: 2px; }
+    .nav-btn {
+      background: none; border: none; cursor: pointer;
+      width: 30px; height: 30px; border-radius: 6px;
+      font-size: 16px; color: #555;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nav-btn:hover { background: rgba(0,0,0,0.08); }
+    .nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+    .url-bar {
+      flex: 1; display: flex; align-items: center; gap: 8px;
+      background: #fff; border: 1px solid #ccc; border-radius: 8px;
+      padding: 0 10px; height: 34px;
+    }
+    .url-bar input {
+      flex: 1; border: none; outline: none;
+      font-size: 13px; color: #222; background: transparent; min-width: 0;
+    }
+    .url-bar button {
+      background: none; border: none; cursor: pointer;
+      padding: 4px; color: #777;
+      display: flex; align-items: center; border-radius: 4px;
+    }
+    .url-bar button:hover { background: #f0f0f0; }
+
+    /* Badge proxy actif */
+    .proxy-badge {
+      font-size: 11px; padding: 2px 8px;
+      background: #e8f5e9; color: #2e7d32;
+      border: 1px solid #a5d6a7; border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    /* ── Log d'automatisation ── */
+    .auto-panel {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 8px 14px;
+      background: #1e1e2e; border-bottom: 1px solid #333;
+    }
+    .auto-panel label { font-size: 12px; color: #aaa; }
+    .auto-log {
+      flex: 1; font-size: 11px; color: #69ff85;
+      font-family: monospace; min-width: 200px;
+    }
+    .auto-toggle {
+      font-size: 11px; padding: 3px 10px;
+      border: 1px solid #444; border-radius: 4px;
+      background: #2a2a3e; color: #ccc; cursor: pointer;
+    }
+    .auto-toggle.active { background: #2e7d32; border-color: #4caf50; color: #fff; }
+
+    /* ── Iframe ── */
+    .frame-wrap { position: relative; background: #fff; }
+    iframe { display: block; width: 100%; height: 580px; border: none; }
+
+    /* ── Barre de statut ── */
+    .statusbar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 5px 14px;
+      background: #f0f0f0; border-top: 1px solid #ddd;
+      font-size: 11px; color: #888;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #ccc; flex-shrink: 0;
+    }
+    .status-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+    .status-dot.ready   { background: #22c55e; }
+    .status-dot.error   { background: #ef4444; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Script editor ── */
+    .script-panel {
+      padding: 10px 14px;
+      background: #f8f8f8;
+      border-top: 1px solid #e0e0e0;
+    }
+    .script-panel summary {
+      cursor: pointer; font-size: 12px; color: #555;
+      font-weight: 500; padding: 2px 0;
+    }
+    .script-panel textarea {
+      width: 100%; margin-top: 8px;
+      font-family: monospace; font-size: 12px;
+      border: 1px solid #ccc; border-radius: 6px;
+      padding: 8px; background: #1e1e2e; color: #cdd6f4;
+      resize: vertical; min-height: 100px; outline: none;
+    }
+    .run-btn {
+      margin-top: 6px; padding: 5px 16px;
+      background: #4f46e5; color: #fff;
+      border: none; border-radius: 6px;
+      font-size: 12px; cursor: pointer;
+    }
+    .run-btn:hover { background: #4338ca; }
+  </style>
+</head>
+<body>
+
+<div class="browser">
+
+  <!-- ── Toolbar ── -->
+  <div class="toolbar">
+    <div class="dots">
+      <div class="dot" style="background:#ff5f57"></div>
+      <div class="dot" style="background:#febc2e"></div>
+      <div class="dot" style="background:#28c840"></div>
+    </div>
+    <div class="nav-btns">
+      <button class="nav-btn" id="btn-back" disabled title="Précédent">&#8592;</button>
+      <button class="nav-btn" id="btn-fwd"  disabled title="Suivant">&#8594;</button>
+      <button class="nav-btn" id="btn-rld"  title="Recharger">&#8635;</button>
+    </div>
+    <div class="url-bar">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+        <circle cx="7" cy="7" r="5" stroke="#999" stroke-width="1.5"/>
+        <path d="M10.5 10.5L14 14" stroke="#999" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <input type="text" id="url-input" placeholder="Entrer une URL…" autocomplete="off" spellcheck="false"/>
+      <button onclick="navigate()" title="Aller">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8h10M9 4l4 4-4 4" stroke="#777" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+    <span class="proxy-badge">🔒 Proxy actif — IP visiteur</span>
+  </div>
+
+  <!-- ── Panneau automatisation ── -->
+  <div class="auto-panel">
+    <label>AUTO</label>
+    <span class="auto-log" id="auto-log">En attente du chargement…</span>
+    <button class="auto-toggle" id="toggle-auto" onclick="toggleAuto()">▶ Activer</button>
+  </div>
+
+  <!-- ── Iframe ── -->
+  <div class="frame-wrap">
+    <iframe id="frame" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-top-navigation"></iframe>
+  </div>
+
+  <!-- ── Statut ── -->
+  <div class="statusbar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Prêt</span>
+  </div>
+
+  <!-- ── Éditeur de script ── -->
+  <details class="script-panel">
+    <summary>⚙️ Éditeur de script d'automatisation</summary>
+    <textarea id="script-editor">
+// Ce script s'exécute dans l'iframe après chargement
+// "doc" = document de l'iframe, "win" = window de l'iframe
+
+// Exemple 1 : Scroll automatique progressif
+function scrollAuto() {
+  let pos = 0;
+  const interval = setInterval(() => {
+    pos += 80;
+    win.scrollTo({ top: pos, behavior: 'smooth' });
+    log('Scroll → ' + pos + 'px');
+    if (pos >= 1500) clearInterval(interval);
+  }, 600);
+}
+
+// Exemple 2 : Cliquer sur un élément
+function cliquerSur(selector) {
+  const el = doc.querySelector(selector);
+  if (el) {
+    el.click();
+    log('Clic sur : ' + selector);
+  } else {
+    log('Élément non trouvé : ' + selector);
+  }
+}
+
+// ── Séquence principale ──
+// Modifie ici selon ce que tu veux faire
+
+scrollAuto();
+
+// Cliquer sur un lien après 3 secondes
+setTimeout(() => cliquerSur('a'), 3000);
+    </textarea>
+    <button class="run-btn" onclick="runScript()">▶ Exécuter le script</button>
+  </details>
+
+</div>
+
+<script>
+  const frame    = document.getElementById('frame');
+  const inp      = document.getElementById('url-input');
+  const statusTx = document.getElementById('status-text');
+  const statusDt = document.getElementById('status-dot');
+  const autoLog  = document.getElementById('auto-log');
+  const toggleBtn= document.getElementById('toggle-auto');
+
+  let hist = [];
+  let idx  = -1;
+  let autoEnabled = false;
+  let proxyBase = window.location.origin; // ex: http://localhost:3000
+
+  // ── Fonctions utilitaires ──────────────────────────────────
+
+  function log(msg) {
+    autoLog.textContent = '▸ ' + msg;
+    console.log('[AUTO]', msg);
+  }
+
+  function setStatus(state, msg) {
+    statusTx.textContent = msg;
+    statusDt.className   = 'status-dot ' + state;
+  }
+
+  function proxyUrl(url) {
+    // Transformer une URL en URL proxy
+    return proxyBase + '/proxy?url=' + encodeURIComponent(url);
+  }
+
+  function go(url) {
+    setStatus('loading', 'Chargement via proxy…');
+    const pUrl = url.startsWith(proxyBase) ? url : proxyUrl(url);
+    frame.src  = pUrl;
+    inp.value  = url.replace(proxyBase + '/proxy?url=', '').replace(/^.*url=/, '');
+    hist       = hist.slice(0, idx + 1);
+    hist.push(url);
+    idx        = hist.length - 1;
+    updateNav();
+  }
+
+  function navigate() {
+    const v = inp.value.trim();
+    if (!v) return;
+    const url = /^https?:\/\//i.test(v) ? v : 'https://' + v;
+    go(url);
+  }
+
+  function updateNav() {
+    document.getElementById('btn-back').disabled = idx <= 0;
+    document.getElementById('btn-fwd').disabled  = idx >= hist.length - 1;
+  }
+
+  function toggleAuto() {
+    autoEnabled = !autoEnabled;
+    toggleBtn.textContent = autoEnabled ? '⏹ Désactiver' : '▶ Activer';
+    toggleBtn.classList.toggle('active', autoEnabled);
+    log(autoEnabled ? 'Automatisation activée' : 'Automatisation désactivée');
+  }
+
+  // ── Script automatisation au chargement ───────────────────
+
+  frame.addEventListener('load', () => {
+    setStatus('ready', 'Page chargée via proxy');
+
+    if (!autoEnabled) return;
+
+    // Accès au document de l'iframe (possible car même domaine via proxy)
+    try {
+      const doc = frame.contentDocument;
+      const win = frame.contentWindow;
+
+      if (!doc || !doc.body) {
+        log('Document iframe non accessible');
+        return;
+      }
+
+      log('Page chargée — démarrage de la séquence…');
+
+      // ────────────────────────────────────────────────────────
+      // ✏️  MODIFIE ICI TA SÉQUENCE DE CLICS / ACTIONS
+      // ────────────────────────────────────────────────────────
+
+      // Étape 1 : Scroll progressif après 1s
+      setTimeout(() => {
+        log('Scroll vers le bas…');
+        win.scrollTo({ top: 500, behavior: 'smooth' });
+      }, 1000);
+
+      // Étape 2 : Clic sur le premier lien après 2s
+      setTimeout(() => {
+        const lien = doc.querySelector('a');
+        if (lien) {
+          log('Clic sur : ' + lien.textContent.trim().substring(0, 40));
+          lien.click();
+        } else {
+          log('Aucun lien trouvé');
+        }
+      }, 2000);
+
+      // Étape 3 : Action personnalisée après 4s
+      setTimeout(() => {
+        // Exemple : clic sur un bouton spécifique
+        const btn = doc.querySelector('button, .btn, .wp-block-button a');
+        if (btn) {
+          log('Clic bouton : ' + btn.textContent.trim().substring(0, 40));
+          btn.click();
+        } else {
+          log('Séquence terminée');
+        }
+      }, 4000);
+
+      // ────────────────────────────────────────────────────────
+
+    } catch (err) {
+      log('Erreur : ' + err.message);
+      setStatus('error', 'Erreur d\'accès iframe');
+    }
+  });
+
+  // ── Exécuter le script depuis l'éditeur ───────────────────
+
+  function runScript() {
+    try {
+      const doc = frame.contentDocument;
+      const win = frame.contentWindow;
+
+      if (!doc || !doc.body) {
+        log('Charge d\'abord une page via le proxy');
+        return;
+      }
+
+      // Exposer la fonction log à l'éditeur
+      const scriptCode = document.getElementById('script-editor').value;
+      const fn = new Function('doc', 'win', 'log', scriptCode);
+      fn(doc, win, log);
+      log('Script exécuté avec succès');
+    } catch (err) {
+      log('Erreur script : ' + err.message);
+    }
+  }
+
+  // ── Navigation ────────────────────────────────────────────
+
+  document.getElementById('btn-back').addEventListener('click', () => {
+    if (idx > 0) { idx--; frame.src = hist[idx]; inp.value = decodeURIComponent(hist[idx].replace(proxyBase + '/proxy?url=', '')); updateNav(); }
+  });
+  document.getElementById('btn-fwd').addEventListener('click', () => {
+    if (idx < hist.length-1) { idx++; frame.src = hist[idx]; inp.value = decodeURIComponent(hist[idx].replace(proxyBase + '/proxy?url=', '')); updateNav(); }
+  });
+  document.getElementById('btn-rld').addEventListener('click', () => { frame.src = frame.src; });
+
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(); });
+
+  // ── Chargement automatique au démarrage ───────────────────
+  window.addEventListener('load', () => {
+    go('https://net24digital.com/professional-higgsfield-ai-review-is-it-the-ultimate-video-tool/');
+  });
+</script>
+
+</body>
+</html>
 
